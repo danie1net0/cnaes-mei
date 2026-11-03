@@ -1,0 +1,34 @@
+default:
+  image: golang:1.26
+
+stages:
+  - check
+
+variables:
+  POSTGRES_DB: cnaes_mei_test
+  POSTGRES_USER: cnaes_mei
+  POSTGRES_PASSWORD: cnaes_mei
+  TEST_POSTGRES_URL: postgres://cnaes_mei:cnaes_mei@postgres:5432/cnaes_mei_test?sslmode=disable
+
+format:
+  stage: check
+  script:
+    - test -z "$(gofmt -s -l .)" || { gofmt -s -l .; exit 1; }
+
+vet:
+  stage: check
+  script:
+    - go vet ./...
+
+test:
+  stage: check
+  services:
+    - postgres:18
+  script:
+    - go test --race -coverprofile=coverage.out ./...
+    - go tool cover -func=coverage.out
+  coverage: '/total:\s+\(statements\)\s+(\d+\.\d+)%/'
+  artifacts:
+    paths:
+      - coverage.out
+    expire_in: 1 week

@@ -1,0 +1,13 @@
+# Compiled binary
+/cnaes-mei
+
+# Collected data
+*.csv
+*.tsv
+*.json
+
+# Coverage
+*.out
+
+# macOS
+.DS_Store
