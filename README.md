@@ -1,8 +1,19 @@
-# cnaes-mei
+<h1 align="center">cnaes-mei</h1>
 
-Coleta as ocupações permitidas para o MEI, e o CNAE de cada uma, a partir da
-[listagem publicada no gov.br][listagem], e entrega o resultado em CSV, TSV,
-JSON ou direto numa tabela do PostgreSQL.
+<p align="center">
+  As ocupações permitidas ao MEI, e o CNAE de cada uma,<br>
+  raspadas da listagem do gov.br e entregues em CSV, TSV, JSON ou PostgreSQL.
+</p>
+
+<p align="center">
+  <a href="https://gitlab.com/danie1net0/cnaes-mei/-/pipelines"><img alt="pipeline" src="https://gitlab.com/danie1net0/cnaes-mei/badges/master/pipeline.svg"></a>
+  <a href="https://gitlab.com/danie1net0/cnaes-mei/-/pipelines"><img alt="cobertura" src="https://gitlab.com/danie1net0/cnaes-mei/badges/master/coverage.svg"></a>
+  <img alt="Go 1.26" src="https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white">
+  <img alt="470 ocupações" src="https://img.shields.io/badge/ocupa%C3%A7%C3%B5es-470-dd5e53">
+  <img alt="350 CNAEs" src="https://img.shields.io/badge/CNAEs%20distintos-350-dd5e53">
+</p>
+
+---
 
 A Receita Federal não publica essa relação junto com os dados do CNPJ: ela sai
 em páginas HTML, uma por letra inicial da ocupação. Este projeto existe para
@@ -10,9 +21,20 @@ cruzar essas ocupações com uma base de CNPJs — por exemplo, para saber quais
 estabelecimentos exercem alguma atividade que um MEI poderia exercer.
 
 Na coleta de 02/11/2026 eram **470 ocupações** e **350 CNAEs distintos** (o
-mesmo CNAE serve a várias ocupações), em cerca de 2 segundos.
+mesmo CNAE serve a várias ocupações), em cerca de **2 segundos**.
+
+Fonte: [atividades permitidas ao MEI][listagem], no gov.br.
 
 [listagem]: https://www.gov.br/empresas-e-negocios/pt-br/empreendedor/quero-ser-mei/atividades-permitidas
+
+## Sumário
+
+- [Instalação](#instalação)
+- [Uso](#uso)
+- [Opções](#opções)
+- [O que a ferramenta faz com a fonte](#o-que-a-ferramenta-faz-com-a-fonte)
+- [A tabela no PostgreSQL](#a-tabela-no-postgresql)
+- [Desenvolvimento](#desenvolvimento)
 
 ## Instalação
 
@@ -30,7 +52,10 @@ $ go install gitlab.com/danie1net0/cnaes-mei@latest
 
 ## Uso
 
-Por padrão escreve CSV na saída padrão:
+<table>
+<tr><td>
+
+**CSV na saída padrão** — o padrão
 
 ```console
 $ cnaes-mei
@@ -40,19 +65,27 @@ cnae,ocupacao,letra
 ...
 ```
 
-Num arquivo, no formato que o `COPY` do PostgreSQL lê:
+</td><td>
+
+**Num arquivo**, no formato que o `COPY` lê
 
 ```console
 $ cnaes-mei -format tsv -output cnaes-mei.tsv
 ```
 
-Direto no banco, substituindo o conteúdo da tabela numa única transação:
+</td></tr>
+<tr><td colspan="2">
+
+**Direto no banco**, substituindo o conteúdo da tabela numa única transação
 
 ```console
 $ cnaes-mei -database-url "postgres://usuario@localhost:5432/minha_receita?sslmode=disable"
 ```
 
 Passando `-output` junto com `-database-url`, faz as duas coisas.
+
+</td></tr>
+</table>
 
 ### Opções
 
@@ -77,22 +110,25 @@ A listagem não tem índice navegável, então as 26 letras do alfabeto são
 tentadas e as que respondem 404 são ignoradas — hoje são 19 páginas. Assim,
 uma letra que a fonte ganhe ou perca não exige mudança no código.
 
-**O CNAE sai com sete dígitos, como texto.** Em número, códigos como
-`0111-3/01` perderiam o zero à esquerda. No PostgreSQL ele é gravado como
-`int`, que é o tipo usado nas bases de CNPJ; o zero volta na formatação.
+> **O CNAE sai com sete dígitos, como texto.**
+> Em número, códigos como `0111-3/01` perderiam o zero à esquerda. No
+> PostgreSQL ele é gravado como `int`, que é o tipo usado nas bases de CNPJ; o
+> zero volta na formatação.
 
-**Linha ilegível não derruba a coleta.** A própria listagem publica CNAE com
-dígito faltando — em 02/11/2026, `602-5/02` para `DEPILADOR(A) INDEPENDENTE`,
-que deveria ser `9602-5/02`. Essas linhas são registradas como aviso e
-puladas; com `-strict`, a coleta para na primeira.
+> **Linha ilegível não derruba a coleta.**
+> A própria listagem publica CNAE com dígito faltando — em 02/11/2026,
+> `602-5/02` para `DEPILADOR(A) INDEPENDENTE`, que deveria ser `9602-5/02`.
+> Essas linhas são registradas como aviso e puladas; com `-strict`, a coleta
+> para na primeira.
 
-**O tamanho da colheita é conferido.** Se a página mudar de estrutura e as
-tabelas passarem a vir vazias, tudo continua respondendo 200 e nada quebra
-sozinho — por isso a coleta falha quando traz menos que `-min` atividades.
+> **O tamanho da colheita é conferido.**
+> Se a página mudar de estrutura e as tabelas passarem a vir vazias, tudo
+> continua respondendo 200 e nada quebra sozinho — por isso a coleta falha
+> quando traz menos que `-min` atividades.
 
-**A mesma coleta gera sempre o mesmo arquivo.** O resultado é ordenado por
-CNAE e ocupação, então dá para versionar a saída e enxergar no `diff` o que a
-fonte mudou de um mês para o outro.
+> **A mesma coleta gera sempre o mesmo arquivo.**
+> O resultado é ordenado por CNAE e ocupação, então dá para versionar a saída
+> e enxergar no `diff` o que a fonte mudou de um mês para o outro.
 
 ## A tabela no PostgreSQL
 
@@ -151,3 +187,12 @@ Para gravar a versão no binário:
 ```console
 $ go build -ldflags "-X gitlab.com/danie1net0/cnaes-mei/internal/cli.Version=$(git describe --tags --always)" -o cnaes-mei .
 ```
+
+## Estrutura
+
+| Pacote | Responsabilidade |
+|---|---|
+| [`internal/mei`](internal/mei) | Busca e leitura das páginas: `Scraper`, `ParsePage`, `ParseCNAE` |
+| [`internal/output`](internal/output) | Escrita em CSV, TSV e JSON |
+| [`internal/postgres`](internal/postgres) | Criação da tabela e carga via `COPY` |
+| [`internal/cli`](internal/cli) | Flags, variáveis de ambiente e código de saída |
