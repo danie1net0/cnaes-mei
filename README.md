@@ -1,4 +1,6 @@
-<h1 align="center">cnaes-mei</h1>
+<h1 align="center">
+  <img src="art/social-preview-1280x640.png" width="640" alt="cnaes-mei">
+</h1>
 
 <p align="center">
   As ocupações permitidas ao MEI, e o CNAE de cada uma,<br>
@@ -6,11 +8,11 @@
 </p>
 
 <p align="center">
-  <a href="https://gitlab.com/danie1net0/cnaes-mei/-/pipelines"><img alt="pipeline" src="https://gitlab.com/danie1net0/cnaes-mei/badges/master/pipeline.svg"></a>
-  <a href="https://gitlab.com/danie1net0/cnaes-mei/-/pipelines"><img alt="cobertura" src="https://gitlab.com/danie1net0/cnaes-mei/badges/master/coverage.svg"></a>
+  <a href="https://gitlab.com/danie1net0/cnaes-mei/-/pipelines"><img alt="pipeline" src="https://img.shields.io/gitlab/pipeline-status/danie1net0%2Fcnaes-mei?branch=master&label=pipeline"></a>
+  <a href="https://gitlab.com/danie1net0/cnaes-mei/-/pipelines"><img alt="cobertura" src="https://img.shields.io/gitlab/pipeline-coverage/danie1net0%2Fcnaes-mei?branch=master&label=cobertura"></a>
   <img alt="Go 1.26" src="https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white">
   <img alt="470 ocupações" src="https://img.shields.io/badge/ocupa%C3%A7%C3%B5es-470-dd5e53">
-  <img alt="350 CNAEs" src="https://img.shields.io/badge/CNAEs%20distintos-350-dd5e53">
+  <img alt="350 CNAEs distintos" src="https://img.shields.io/badge/CNAEs%20distintos-350-dd5e53">
 </p>
 
 ---
