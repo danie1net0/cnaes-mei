@@ -64,50 +64,50 @@ type Option func(*Scraper)
 // WithBaseURL points the scraper at another address, which is what the tests
 // and a mirror of the listing need.
 func WithBaseURL(url string) Option {
-	return func(s *Scraper) { s.baseURL = strings.TrimSuffix(url, "/") }
+	return func(scraper *Scraper) { scraper.baseURL = strings.TrimSuffix(url, "/") }
 }
 
 // WithHTTPClient replaces the HTTP client, including its timeout.
-func WithHTTPClient(c *http.Client) Option {
-	return func(s *Scraper) { s.client = c }
+func WithHTTPClient(client *http.Client) Option {
+	return func(scraper *Scraper) { scraper.client = client }
 }
 
 // WithLogger sets where progress is reported.
-func WithLogger(l *slog.Logger) Option {
-	return func(s *Scraper) { s.logger = l }
+func WithLogger(logger *slog.Logger) Option {
+	return func(scraper *Scraper) { scraper.logger = logger }
 }
 
 // WithParallel sets how many letter pages are fetched at the same time.
-func WithParallel(n int) Option {
-	return func(s *Scraper) { s.parallel = n }
+func WithParallel(count int) Option {
+	return func(scraper *Scraper) { scraper.parallel = count }
 }
 
 // WithAttempts sets how many times a failing page is tried before giving up.
-func WithAttempts(n int) Option {
-	return func(s *Scraper) { s.attempts = n }
+func WithAttempts(count int) Option {
+	return func(scraper *Scraper) { scraper.attempts = count }
 }
 
 // WithBackoff sets the pause before the first retry; it doubles at each attempt.
-func WithBackoff(d time.Duration) Option {
-	return func(s *Scraper) { s.backoff = d }
+func WithBackoff(duration time.Duration) Option {
+	return func(scraper *Scraper) { scraper.backoff = duration }
 }
 
 // WithMinimum sets how many activities a harvest must yield to be accepted.
 // Zero turns the check off.
-func WithMinimum(n int) Option {
-	return func(s *Scraper) { s.minimum = n }
+func WithMinimum(count int) Option {
+	return func(scraper *Scraper) { scraper.minimum = count }
 }
 
 // WithStrict makes a row that cannot be read stop the whole run. By default
 // such a row is logged and skipped, because the listing does publish the odd
 // malformed CNAE and one typo should not cost the other five hundred rows.
 func WithStrict(strict bool) Option {
-	return func(s *Scraper) { s.strict = strict }
+	return func(scraper *Scraper) { scraper.strict = strict }
 }
 
 // NewScraper builds a scraper with the defaults applied, then the options.
-func NewScraper(opts ...Option) *Scraper {
-	s := &Scraper{
+func NewScraper(options ...Option) *Scraper {
+	scraper := &Scraper{
 		baseURL:   DefaultBaseURL,
 		client:    &http.Client{Timeout: DefaultTimeout},
 		logger:    slog.New(slog.DiscardHandler),
@@ -116,22 +116,22 @@ func NewScraper(opts ...Option) *Scraper {
 		attempts:  DefaultAttempts,
 		backoff:   DefaultBackoff,
 	}
-	for _, opt := range opts {
-		opt(s)
+	for _, option := range options {
+		option(scraper)
 	}
-	return s
+	return scraper
 }
 
 // Scrape fetches every letter page and returns the activities, sorted by CNAE
 // and occupation so that two runs over unchanged pages produce the same bytes.
-func (s *Scraper) Scrape(ctx context.Context) ([]Activity, error) {
+func (scraper *Scraper) Scrape(ctx context.Context) ([]Activity, error) {
 	group, ctx := errgroup.WithContext(ctx)
-	group.SetLimit(s.parallel)
+	group.SetLimit(scraper.parallel)
 
 	found := make([][]Activity, len(letters))
 	for i, letter := range letters {
 		group.Go(func() error {
-			activities, err := s.scrapeLetter(ctx, letter)
+			activities, err := scraper.scrapeLetter(ctx, letter)
 			if err != nil {
 				return err
 			}
@@ -147,58 +147,55 @@ func (s *Scraper) Scrape(ctx context.Context) ([]Activity, error) {
 	for _, fromLetter := range found {
 		activities = append(activities, fromLetter...)
 	}
-	slices.SortFunc(activities, func(a, b Activity) int {
-		return cmp.Or(cmp.Compare(a.CNAE, b.CNAE), cmp.Compare(a.Occupation, b.Occupation))
+	slices.SortFunc(activities, func(first, second Activity) int {
+		return cmp.Or(cmp.Compare(first.CNAE, second.CNAE), cmp.Compare(first.Occupation, second.Occupation))
 	})
 
-	if s.minimum > 0 && len(activities) < s.minimum {
-		return nil, fmt.Errorf("%w: got %d, expected at least %d — the listing may have changed", ErrTooFewActivities, len(activities), s.minimum)
+	if scraper.minimum > 0 && len(activities) < scraper.minimum {
+		return nil, fmt.Errorf("%w: got %d, expected at least %d — the listing may have changed", ErrTooFewActivities, len(activities), scraper.minimum)
 	}
-	s.logger.Info("activities collected", "total", len(activities))
+	scraper.logger.Info("activities collected", "total", len(activities))
 	return activities, nil
 }
 
 // scrapeLetter fetches and parses one letter page. A letter with no page is not
 // an error: not every initial has occupations.
-func (s *Scraper) scrapeLetter(ctx context.Context, letter string) ([]Activity, error) {
-	body, found, err := s.get(ctx, s.baseURL+"/"+letter)
+func (scraper *Scraper) scrapeLetter(ctx context.Context, letter string) ([]Activity, error) {
+	body, found, err := scraper.get(ctx, scraper.baseURL+"/"+letter)
 	if err != nil {
 		return nil, err
 	}
 	if !found {
-		s.logger.Debug("letter with no page", "letter", letter)
+		scraper.logger.Debug("letter with no page", "letter", letter)
 		return nil, nil
 	}
 	defer body.Close()
 
 	upper := strings.ToUpper(letter)
 	activities, err := ParsePage(body, upper)
-	if err != nil {
-		if s.strict || errors.Is(err, ErrNoTable) {
-			return nil, fmt.Errorf("letter %s: %w", upper, err)
-		}
-		for _, problem := range unwrapJoined(err) {
-			s.logger.Warn("row skipped", "letter", upper, "reason", problem)
-		}
+	if err != nil && (scraper.strict || errors.Is(err, ErrNoTable)) {
+		return nil, fmt.Errorf("letter %s: %w", upper, err)
 	}
-	s.logger.Debug("letter read", "letter", upper, "activities", len(activities))
+
+	for _, problem := range unwrapJoined(err) {
+		scraper.logger.Warn("row skipped", "letter", upper, "reason", problem)
+	}
+
+	scraper.logger.Debug("letter read", "letter", upper, "activities", len(activities))
 	return activities, nil
 }
 
 // get fetches a URL, retrying what is worth retrying. The second return value
 // is false when the page does not exist, which the caller treats as empty
 // rather than as a failure. The body is the caller's to close.
-func (s *Scraper) get(ctx context.Context, url string) (io.ReadCloser, bool, error) {
+func (scraper *Scraper) get(ctx context.Context, url string) (io.ReadCloser, bool, error) {
 	var last error
-	for attempt := 1; attempt <= s.attempts; attempt++ {
-		if attempt > 1 {
-			if err := sleep(ctx, s.backoff<<(attempt-2)); err != nil {
-				return nil, false, err
-			}
-			s.logger.Debug("retrying", "url", url, "attempt", attempt, "previous_error", last)
+	for attempt := 1; attempt <= scraper.attempts; attempt++ {
+		if err := scraper.pauseBeforeRetry(ctx, url, attempt, last); err != nil {
+			return nil, false, err
 		}
 
-		body, found, err := s.try(ctx, url)
+		body, found, err := scraper.try(ctx, url)
 		if err == nil {
 			return body, found, nil
 		}
@@ -207,34 +204,49 @@ func (s *Scraper) get(ctx context.Context, url string) (io.ReadCloser, bool, err
 			return nil, false, err
 		}
 	}
-	return nil, false, fmt.Errorf("gave up on %s after %d attempts: %w", url, s.attempts, last)
+	return nil, false, fmt.Errorf("gave up on %s after %d attempts: %w", url, scraper.attempts, last)
+}
+
+// pauseBeforeRetry waits before every attempt after the first, doubling the
+// wait as the attempts go by. The first attempt waits for nothing.
+func (scraper *Scraper) pauseBeforeRetry(ctx context.Context, url string, attempt int, last error) error {
+	if attempt == 1 {
+		return nil
+	}
+
+	if err := sleep(ctx, scraper.backoff<<(attempt-2)); err != nil {
+		return err
+	}
+
+	scraper.logger.Debug("retrying", "url", url, "attempt", attempt, "previous_error", last)
+	return nil
 }
 
 // try performs a single request.
-func (s *Scraper) try(ctx context.Context, url string) (io.ReadCloser, bool, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+func (scraper *Scraper) try(ctx context.Context, url string) (io.ReadCloser, bool, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, false, fmt.Errorf("could not create the request for %s: %w", url, err)
 	}
-	req.Header.Set("User-Agent", s.userAgent)
+	request.Header.Set("User-Agent", scraper.userAgent)
 
-	resp, err := s.client.Do(req)
+	response, err := scraper.client.Do(request)
 	if err != nil {
 		return nil, false, retry(fmt.Errorf("could not fetch %s: %w", url, err))
 	}
 
 	switch {
-	case resp.StatusCode == http.StatusNotFound:
-		resp.Body.Close()
+	case response.StatusCode == http.StatusNotFound:
+		response.Body.Close()
 		return nil, false, nil
-	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= http.StatusInternalServerError:
-		resp.Body.Close()
-		return nil, false, retry(fmt.Errorf("%s answered %s", url, resp.Status))
-	case resp.StatusCode != http.StatusOK:
-		resp.Body.Close()
-		return nil, false, fmt.Errorf("%s answered %s", url, resp.Status)
+	case response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= http.StatusInternalServerError:
+		response.Body.Close()
+		return nil, false, retry(fmt.Errorf("%s answered %s", url, response.Status))
+	case response.StatusCode != http.StatusOK:
+		response.Body.Close()
+		return nil, false, fmt.Errorf("%s answered %s", url, response.Status)
 	}
-	return resp.Body, true, nil
+	return response.Body, true, nil
 }
 
 // retryableError marks a failure worth another attempt: a network hiccup, a
@@ -243,7 +255,7 @@ type retryableError struct{ error }
 
 // Unwrap keeps errors.Is working through the marker, so that a caller can still
 // recognize a context cancellation or any other wrapped cause.
-func (e retryableError) Unwrap() error { return e.error }
+func (wrapped retryableError) Unwrap() error { return wrapped.error }
 
 func retry(err error) error { return retryableError{err} }
 
@@ -253,8 +265,13 @@ func retryable(err error) bool {
 }
 
 // unwrapJoined splits the error of errors.Join back into its parts, so that
-// each unreadable row becomes one log line.
+// each unreadable row becomes one log line. No error is no parts, which lets
+// the caller loop over the result without asking first.
 func unwrapJoined(err error) []error {
+	if err == nil {
+		return nil
+	}
+
 	joined, ok := err.(interface{ Unwrap() []error })
 	if !ok {
 		return []error{err}
@@ -262,9 +279,9 @@ func unwrapJoined(err error) []error {
 	return joined.Unwrap()
 }
 
-// sleep waits for d, or stops early when the context is done.
-func sleep(ctx context.Context, d time.Duration) error {
-	timer := time.NewTimer(d)
+// sleep waits for the given duration, or stops early when the context is done.
+func sleep(ctx context.Context, duration time.Duration) error {
+	timer := time.NewTimer(duration)
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():

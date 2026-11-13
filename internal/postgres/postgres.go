@@ -24,21 +24,21 @@ var identifier = regexp.MustCompile(`^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)?$`)
 
 // DB is a connection to the database.
 type DB struct {
-	conn *pgx.Conn
+	connection *pgx.Conn
 }
 
 // Connect opens a connection with the given URI.
 func Connect(ctx context.Context, uri string) (*DB, error) {
-	conn, err := pgx.Connect(ctx, uri)
+	connection, err := pgx.Connect(ctx, uri)
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to PostgreSQL: %w", err)
 	}
-	return &DB{conn: conn}, nil
+	return &DB{connection: connection}, nil
 }
 
 // Close ends the connection.
-func (db *DB) Close(ctx context.Context) error {
-	return db.conn.Close(ctx)
+func (database *DB) Close(ctx context.Context) error {
+	return database.connection.Close(ctx)
 }
 
 // Replace makes the table hold exactly the given activities.
@@ -46,34 +46,34 @@ func (db *DB) Close(ctx context.Context) error {
 // Everything happens in one transaction: readers either see the previous
 // contents or the new ones, never an empty table halfway through. The table is
 // created when missing, so the first run needs no migration.
-func (db *DB) Replace(ctx context.Context, table string, activities []mei.Activity) error {
+func (database *DB) Replace(ctx context.Context, table string, activities []mei.Activity) error {
 	name, err := tableName(table)
 	if err != nil {
 		return err
 	}
 
-	tx, err := db.conn.Begin(ctx)
+	transaction, err := database.connection.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("could not start the transaction: %w", err)
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck // a rollback after a commit is a no-op
+	defer transaction.Rollback(ctx) //nolint:errcheck // a rollback after a commit is a no-op
 
-	if _, err := tx.Exec(ctx, createTable(name)); err != nil {
+	if _, err := transaction.Exec(ctx, createTable(name)); err != nil {
 		return fmt.Errorf("could not create the table %s: %w", name, err)
 	}
-	if _, err := tx.Exec(ctx, "TRUNCATE TABLE "+name); err != nil {
+	if _, err := transaction.Exec(ctx, "TRUNCATE TABLE "+name); err != nil {
 		return fmt.Errorf("could not empty the table %s: %w", name, err)
 	}
 
 	rows := make([][]any, 0, len(activities))
-	for _, a := range activities {
-		rows = append(rows, []any{a.CNAE, a.Occupation, a.Letter})
+	for _, activity := range activities {
+		rows = append(rows, []any{activity.CNAE, activity.Occupation, activity.Letter})
 	}
-	if _, err := tx.CopyFrom(ctx, identifierOf(name), []string{"cnae", "ocupacao", "letra"}, pgx.CopyFromRows(rows)); err != nil {
+	if _, err := transaction.CopyFrom(ctx, identifierOf(name), []string{"cnae", "ocupacao", "letra"}, pgx.CopyFromRows(rows)); err != nil {
 		return fmt.Errorf("could not write to the table %s: %w", name, err)
 	}
 
-	if err := tx.Commit(ctx); err != nil {
+	if err := transaction.Commit(ctx); err != nil {
 		return fmt.Errorf("could not commit: %w", err)
 	}
 	return nil

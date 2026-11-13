@@ -15,41 +15,41 @@ var sample = []mei.Activity{
 	{CNAE: 4722901, Occupation: "AÇOUGUEIRO(A), INDEPENDENTE", Letter: "A"},
 }
 
-func TestWriteCSV(t *testing.T) {
+func TestWriteCSV(test *testing.T) {
 	var out strings.Builder
 
 	if err := Write(&out, CSV, sample); err != nil {
-		t.Fatalf("Write returned an error: %s", err)
+		test.Fatalf("Write returned an error: %s", err)
 	}
 
 	want := "cnae,ocupacao,letra\n" +
 		"0111301,CULTIVO DE ARROZ,C\n" +
 		"4722901,\"AÇOUGUEIRO(A), INDEPENDENTE\",A\n"
 	if out.String() != want {
-		t.Errorf("got:\n%s\nwant:\n%s", out.String(), want)
+		test.Errorf("got:\n%s\nwant:\n%s", out.String(), want)
 	}
 }
 
-func TestWriteTSV(t *testing.T) {
+func TestWriteTSV(test *testing.T) {
 	var out strings.Builder
 
 	if err := Write(&out, TSV, sample); err != nil {
-		t.Fatalf("Write returned an error: %s", err)
+		test.Fatalf("Write returned an error: %s", err)
 	}
 
 	want := "cnae\tocupacao\tletra\n" +
 		"0111301\tCULTIVO DE ARROZ\tC\n" +
 		"4722901\tAÇOUGUEIRO(A), INDEPENDENTE\tA\n"
 	if out.String() != want {
-		t.Errorf("got:\n%s\nwant:\n%s", out.String(), want)
+		test.Errorf("got:\n%s\nwant:\n%s", out.String(), want)
 	}
 }
 
-func TestWriteJSON(t *testing.T) {
+func TestWriteJSON(test *testing.T) {
 	var out strings.Builder
 
 	if err := Write(&out, JSON, sample); err != nil {
-		t.Fatalf("Write returned an error: %s", err)
+		test.Fatalf("Write returned an error: %s", err)
 	}
 
 	want := `[
@@ -66,50 +66,50 @@ func TestWriteJSON(t *testing.T) {
 ]
 `
 	if out.String() != want {
-		t.Errorf("got:\n%s\nwant:\n%s", out.String(), want)
+		test.Errorf("got:\n%s\nwant:\n%s", out.String(), want)
 	}
 }
 
-func TestWriteNothing(t *testing.T) {
+func TestWriteNothing(test *testing.T) {
 	for _, format := range Formats {
-		t.Run(string(format), func(t *testing.T) {
+		test.Run(string(format), func(test *testing.T) {
 			var out strings.Builder
 
 			if err := Write(&out, format, nil); err != nil {
-				t.Fatalf("Write returned an error: %s", err)
+				test.Fatalf("Write returned an error: %s", err)
 			}
 			if out.Len() == 0 {
-				t.Error("nothing was written, want at least the header or an empty list")
+				test.Error("nothing was written, want at least the header or an empty list")
 			}
 		})
 	}
 }
 
-func TestWriteUnknownFormat(t *testing.T) {
+func TestWriteUnknownFormat(test *testing.T) {
 	err := Write(&strings.Builder{}, Format("xml"), sample)
 
 	if err == nil {
-		t.Fatal("got no error, want the unknown format")
+		test.Fatal("got no error, want the unknown format")
 	}
 	if !strings.Contains(err.Error(), "csv, tsv, json") {
-		t.Errorf("error is %q, want it to list the formats", err)
+		test.Errorf("error is %q, want it to list the formats", err)
 	}
 }
 
-func TestWriteWhenTheWriterFails(t *testing.T) {
+func TestWriteWhenTheWriterFails(test *testing.T) {
 	for _, format := range Formats {
-		t.Run(string(format), func(t *testing.T) {
+		test.Run(string(format), func(test *testing.T) {
 			err := Write(failingWriter{}, format, sample)
 
 			if !errors.Is(err, errWriter) {
-				t.Errorf("got error %v, want it to wrap %v", err, errWriter)
+				test.Errorf("got error %v, want it to wrap %v", err, errWriter)
 			}
 		})
 	}
 }
 
-func TestParseFormat(t *testing.T) {
-	for _, tc := range []struct {
+func TestParseFormat(test *testing.T) {
+	for _, testCase := range []struct {
 		in   string
 		want Format
 	}{
@@ -118,32 +118,32 @@ func TestParseFormat(t *testing.T) {
 		{"tsv", TSV},
 		{"json", JSON},
 	} {
-		t.Run(tc.in, func(t *testing.T) {
-			got, err := ParseFormat(tc.in)
+		test.Run(testCase.in, func(test *testing.T) {
+			got, err := ParseFormat(testCase.in)
 			if err != nil {
-				t.Fatalf("ParseFormat(%q) returned an error: %s", tc.in, err)
+				test.Fatalf("ParseFormat(%q) returned an error: %s", testCase.in, err)
 			}
-			if got != tc.want {
-				t.Errorf("ParseFormat(%q) got %q, want %q", tc.in, got, tc.want)
+			if got != testCase.want {
+				test.Errorf("ParseFormat(%q) got %q, want %q", testCase.in, got, testCase.want)
 			}
 		})
 	}
 }
 
-func TestParseFormatUnknown(t *testing.T) {
+func TestParseFormatUnknown(test *testing.T) {
 	_, err := ParseFormat("xml")
 
 	if err == nil {
-		t.Fatal("got no error, want the unknown format")
+		test.Fatal("got no error, want the unknown format")
 	}
 	if !strings.Contains(err.Error(), "csv, tsv, json") {
-		t.Errorf("error is %q, want it to list the formats", err)
+		test.Errorf("error is %q, want it to list the formats", err)
 	}
 }
 
-func TestNames(t *testing.T) {
+func TestNames(test *testing.T) {
 	if got, want := Names(), "csv, tsv, json"; got != want {
-		t.Errorf("Names() got %q, want %q", got, want)
+		test.Errorf("Names() got %q, want %q", got, want)
 	}
 }
 

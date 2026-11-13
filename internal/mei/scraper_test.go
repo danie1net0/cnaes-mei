@@ -31,24 +31,24 @@ func row(occupation, cnae string) string {
 
 // listing serves pages by letter and answers 404 for every other letter, the
 // way the government's site does.
-func listing(t *testing.T, pages map[string]string) *httptest.Server {
-	t.Helper()
+func listing(test *testing.T, pages map[string]string) *httptest.Server {
+	test.Helper()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, r *http.Request) {
 		letter := strings.TrimPrefix(r.URL.Path, "/")
 		page, ok := pages[letter]
 		if !ok {
-			http.NotFound(w, r)
+			http.NotFound(writer, r)
 			return
 		}
-		fmt.Fprint(w, page)
+		fmt.Fprint(writer, page)
 	}))
-	t.Cleanup(server.Close)
+	test.Cleanup(server.Close)
 	return server
 }
 
-func TestScrape(t *testing.T) {
-	server := listing(t, map[string]string{
+func TestScrape(test *testing.T) {
+	server := listing(test, map[string]string{
 		"a": pageWith(row("AÇOUGUEIRO(A) INDEPENDENTE", "4722-9/01")),
 		"c": pageWith(
 			row("CULTIVO DE ARROZ", "0111-3/01"),
@@ -56,9 +56,9 @@ func TestScrape(t *testing.T) {
 		),
 	})
 
-	activities, err := NewScraper(WithBaseURL(server.URL)).Scrape(t.Context())
+	activities, err := NewScraper(WithBaseURL(server.URL)).Scrape(test.Context())
 	if err != nil {
-		t.Fatalf("Scrape returned an error: %s", err)
+		test.Fatalf("Scrape returned an error: %s", err)
 	}
 
 	want := []Activity{
@@ -67,63 +67,63 @@ func TestScrape(t *testing.T) {
 		{CNAE: 4722901, Occupation: "AÇOUGUEIRO(A) INDEPENDENTE", Letter: "A"},
 	}
 	if len(activities) != len(want) {
-		t.Fatalf("got %d activities, want %d: %+v", len(activities), len(want), activities)
+		test.Fatalf("got %d activities, want %d: %+v", len(activities), len(want), activities)
 	}
-	for i := range want {
-		if activities[i] != want[i] {
-			t.Errorf("activity %d is %+v, want %+v", i, activities[i], want[i])
+	for index := range want {
+		if activities[index] != want[index] {
+			test.Errorf("activity %d is %+v, want %+v", index, activities[index], want[index])
 		}
 	}
 }
 
-func TestScrapeTrailingSlashInTheBaseURL(t *testing.T) {
-	server := listing(t, map[string]string{"a": pageWith(row("AÇOUGUEIRO(A) INDEPENDENTE", "4722-9/01"))})
+func TestScrapeTrailingSlashInTheBaseURL(test *testing.T) {
+	server := listing(test, map[string]string{"a": pageWith(row("AÇOUGUEIRO(A) INDEPENDENTE", "4722-9/01"))})
 
-	activities, err := NewScraper(WithBaseURL(server.URL + "/")).Scrape(t.Context())
+	activities, err := NewScraper(WithBaseURL(server.URL + "/")).Scrape(test.Context())
 	if err != nil {
-		t.Fatalf("Scrape returned an error: %s", err)
+		test.Fatalf("Scrape returned an error: %s", err)
 	}
 	if got, want := len(activities), 1; got != want {
-		t.Fatalf("got %d activities, want %d", got, want)
+		test.Fatalf("got %d activities, want %d", got, want)
 	}
 }
 
-func TestScrapeRetriesWhatIsWorthRetrying(t *testing.T) {
+func TestScrapeRetriesWhatIsWorthRetrying(test *testing.T) {
 	var attempts atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/a" {
-			http.NotFound(w, r)
+			http.NotFound(writer, r)
 			return
 		}
 		if attempts.Add(1) < 3 {
-			http.Error(w, "oops", http.StatusBadGateway)
+			http.Error(writer, "oops", http.StatusBadGateway)
 			return
 		}
-		fmt.Fprint(w, pageWith(row("AÇOUGUEIRO(A) INDEPENDENTE", "4722-9/01")))
+		fmt.Fprint(writer, pageWith(row("AÇOUGUEIRO(A) INDEPENDENTE", "4722-9/01")))
 	}))
 	defer server.Close()
 
 	activities, err := NewScraper(
 		WithBaseURL(server.URL),
 		WithBackoff(time.Millisecond),
-	).Scrape(t.Context())
+	).Scrape(test.Context())
 	if err != nil {
-		t.Fatalf("Scrape returned an error: %s", err)
+		test.Fatalf("Scrape returned an error: %s", err)
 	}
 
 	if got, want := len(activities), 1; got != want {
-		t.Fatalf("got %d activities, want %d", got, want)
+		test.Fatalf("got %d activities, want %d", got, want)
 	}
 	if got, want := attempts.Load(), int32(3); got != want {
-		t.Errorf("the page was requested %d times, want %d", got, want)
+		test.Errorf("the page was requested %d times, want %d", got, want)
 	}
 }
 
-func TestScrapeGivesUpAfterTheLastAttempt(t *testing.T) {
+func TestScrapeGivesUpAfterTheLastAttempt(test *testing.T) {
 	var attempts atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		attempts.Add(1)
-		http.Error(w, "oops", http.StatusServiceUnavailable)
+		http.Error(writer, "oops", http.StatusServiceUnavailable)
 	}))
 	defer server.Close()
 
@@ -132,24 +132,24 @@ func TestScrapeGivesUpAfterTheLastAttempt(t *testing.T) {
 		WithBackoff(time.Millisecond),
 		WithAttempts(2),
 		WithParallel(1),
-	).Scrape(t.Context())
+	).Scrape(test.Context())
 
 	if err == nil {
-		t.Fatal("got no error, want the server failure")
+		test.Fatal("got no error, want the server failure")
 	}
 	if !strings.Contains(err.Error(), "after 2 attempts") {
-		t.Errorf("error is %q, want it to report the attempts", err)
+		test.Errorf("error is %q, want it to report the attempts", err)
 	}
 	if got := attempts.Load(); got < 2 {
-		t.Errorf("the page was requested %d times, want at least 2", got)
+		test.Errorf("the page was requested %d times, want at least 2", got)
 	}
 }
 
-func TestScrapeDoesNotRetryWhatWillNotChange(t *testing.T) {
+func TestScrapeDoesNotRetryWhatWillNotChange(test *testing.T) {
 	var attempts atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		attempts.Add(1)
-		http.Error(w, "no", http.StatusForbidden)
+		http.Error(writer, "no", http.StatusForbidden)
 	}))
 	defer server.Close()
 
@@ -157,95 +157,95 @@ func TestScrapeDoesNotRetryWhatWillNotChange(t *testing.T) {
 		WithBaseURL(server.URL),
 		WithBackoff(time.Millisecond),
 		WithParallel(1),
-	).Scrape(t.Context())
+	).Scrape(test.Context())
 
 	if err == nil {
-		t.Fatal("got no error, want the rejection")
+		test.Fatal("got no error, want the rejection")
 	}
 	if !strings.Contains(err.Error(), "403") {
-		t.Errorf("error is %q, want it to report the status", err)
+		test.Errorf("error is %q, want it to report the status", err)
 	}
 	if got, want := attempts.Load(), int32(1); got != want {
-		t.Errorf("the page was requested %d times, want %d", got, want)
+		test.Errorf("the page was requested %d times, want %d", got, want)
 	}
 }
 
-func TestScrapeSkipsRowsItCannotRead(t *testing.T) {
-	server := listing(t, map[string]string{"b": pageWith(
+func TestScrapeSkipsRowsItCannotRead(test *testing.T) {
+	server := listing(test, map[string]string{"b": pageWith(
 		row("BARQUEIRO(A) INDEPENDENTE", "50-99"),
 		row("BORDADEIRO(A) INDEPENDENTE", "1340-5/99"),
 	)})
 	var log strings.Builder
 
-	activities, err := NewScraper(WithBaseURL(server.URL), WithLogger(debugLogger(&log))).Scrape(t.Context())
+	activities, err := NewScraper(WithBaseURL(server.URL), WithLogger(debugLogger(&log))).Scrape(test.Context())
 	if err != nil {
-		t.Fatalf("Scrape returned an error: %s", err)
+		test.Fatalf("Scrape returned an error: %s", err)
 	}
 
 	want := Activity{CNAE: 1340599, Occupation: "BORDADEIRO(A) INDEPENDENTE", Letter: "B"}
 	if len(activities) != 1 || activities[0] != want {
-		t.Fatalf("got %+v, want %+v", activities, []Activity{want})
+		test.Fatalf("got %+v, want %+v", activities, []Activity{want})
 	}
 	if !strings.Contains(log.String(), "row skipped") || !strings.Contains(log.String(), "BARQUEIRO") {
-		t.Errorf("the log does not report the skipped row:\n%s", log.String())
+		test.Errorf("the log does not report the skipped row:\n%s", log.String())
 	}
 }
 
-func TestScrapeStrictStopsAtABrokenRow(t *testing.T) {
-	server := listing(t, map[string]string{"b": pageWith(row("BARQUEIRO(A)", "50-99"))})
+func TestScrapeStrictStopsAtABrokenRow(test *testing.T) {
+	server := listing(test, map[string]string{"b": pageWith(row("BARQUEIRO(A)", "50-99"))})
 
-	_, err := NewScraper(WithBaseURL(server.URL), WithStrict(true)).Scrape(t.Context())
+	_, err := NewScraper(WithBaseURL(server.URL), WithStrict(true)).Scrape(test.Context())
 
 	if err == nil {
-		t.Fatal("got no error, want the parsing failure")
+		test.Fatal("got no error, want the parsing failure")
 	}
 	if !strings.Contains(err.Error(), "letter B") {
-		t.Errorf("error is %q, want it to name the letter", err)
+		test.Errorf("error is %q, want it to name the letter", err)
 	}
 }
 
-func TestScrapeStopsWhenThereIsNoTable(t *testing.T) {
-	server := listing(t, map[string]string{"b": "<html><body><p>Em manutenção</p></body></html>"})
+func TestScrapeStopsWhenThereIsNoTable(test *testing.T) {
+	server := listing(test, map[string]string{"b": "<html><body><p>Em manutenção</p></body></html>"})
 
-	_, err := NewScraper(WithBaseURL(server.URL)).Scrape(t.Context())
+	_, err := NewScraper(WithBaseURL(server.URL)).Scrape(test.Context())
 
 	if !errors.Is(err, ErrNoTable) {
-		t.Fatalf("got error %v, want %v even outside strict mode", err, ErrNoTable)
+		test.Fatalf("got error %v, want %v even outside strict mode", err, ErrNoTable)
 	}
 }
 
-func TestUnwrapJoined(t *testing.T) {
+func TestUnwrapJoined(test *testing.T) {
 	single := errors.New("one problem")
 	if got := unwrapJoined(single); len(got) != 1 || got[0] != single {
-		t.Errorf("got %v, want the error itself", got)
+		test.Errorf("got %v, want the error itself", got)
 	}
 
 	other := errors.New("another problem")
 	if got := unwrapJoined(errors.Join(single, other)); len(got) != 2 {
-		t.Errorf("got %v, want both errors", got)
+		test.Errorf("got %v, want both errors", got)
 	}
 }
 
-func TestScrapeTooFewActivities(t *testing.T) {
-	server := listing(t, map[string]string{"a": pageWith(row("AÇOUGUEIRO(A) INDEPENDENTE", "4722-9/01"))})
+func TestScrapeTooFewActivities(test *testing.T) {
+	server := listing(test, map[string]string{"a": pageWith(row("AÇOUGUEIRO(A) INDEPENDENTE", "4722-9/01"))})
 
-	_, err := NewScraper(WithBaseURL(server.URL), WithMinimum(10)).Scrape(t.Context())
+	_, err := NewScraper(WithBaseURL(server.URL), WithMinimum(10)).Scrape(test.Context())
 
 	if !errors.Is(err, ErrTooFewActivities) {
-		t.Fatalf("got error %v, want %v", err, ErrTooFewActivities)
+		test.Fatalf("got error %v, want %v", err, ErrTooFewActivities)
 	}
 	if !strings.Contains(err.Error(), "got 1, expected at least 10") {
-		t.Errorf("error is %q, want it to report both counts", err)
+		test.Errorf("error is %q, want it to report both counts", err)
 	}
 }
 
-func TestScrapeStopsWithTheContext(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "oops", http.StatusServiceUnavailable)
+func TestScrapeStopsWithTheContext(test *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		http.Error(writer, "oops", http.StatusServiceUnavailable)
 	}))
 	defer server.Close()
 
-	ctx, cancel := context.WithCancel(t.Context())
+	ctx, cancel := context.WithCancel(test.Context())
 	cancel()
 
 	_, err := NewScraper(
@@ -254,23 +254,23 @@ func TestScrapeStopsWithTheContext(t *testing.T) {
 	).Scrape(ctx)
 
 	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("got error %v, want %v", err, context.Canceled)
+		test.Fatalf("got error %v, want %v", err, context.Canceled)
 	}
 }
 
-func TestScrapeWithAnInvalidBaseURL(t *testing.T) {
-	_, err := NewScraper(WithBaseURL("://not a url")).Scrape(t.Context())
+func TestScrapeWithAnInvalidBaseURL(test *testing.T) {
+	_, err := NewScraper(WithBaseURL("://not a url")).Scrape(test.Context())
 
 	if err == nil {
-		t.Fatal("got no error, want the invalid address")
+		test.Fatal("got no error, want the invalid address")
 	}
 	if !strings.Contains(err.Error(), "could not create the request") {
-		t.Errorf("error is %q, want it to report the request it could not build", err)
+		test.Errorf("error is %q, want it to report the request it could not build", err)
 	}
 }
 
-func TestScrapeWithAnUnreachableServer(t *testing.T) {
-	server := listing(t, nil)
+func TestScrapeWithAnUnreachableServer(test *testing.T) {
+	server := listing(test, nil)
 	url := server.URL
 	server.Close()
 
@@ -279,42 +279,42 @@ func TestScrapeWithAnUnreachableServer(t *testing.T) {
 		WithBackoff(time.Millisecond),
 		WithAttempts(1),
 		WithParallel(1),
-	).Scrape(t.Context())
+	).Scrape(test.Context())
 
 	if err == nil {
-		t.Fatal("got no error, want the connection failure")
+		test.Fatal("got no error, want the connection failure")
 	}
 	if !strings.Contains(err.Error(), "could not fetch") {
-		t.Errorf("error is %q, want it to report the fetch", err)
+		test.Errorf("error is %q, want it to report the fetch", err)
 	}
 }
 
-func TestScraperDefaults(t *testing.T) {
-	s := NewScraper()
+func TestScraperDefaults(test *testing.T) {
+	scraper := NewScraper()
 
-	if s.baseURL != DefaultBaseURL {
-		t.Errorf("base URL is %q, want %q", s.baseURL, DefaultBaseURL)
+	if scraper.baseURL != DefaultBaseURL {
+		test.Errorf("base URL is %q, want %q", scraper.baseURL, DefaultBaseURL)
 	}
-	if s.parallel != DefaultParallel {
-		t.Errorf("parallel is %d, want %d", s.parallel, DefaultParallel)
+	if scraper.parallel != DefaultParallel {
+		test.Errorf("parallel is %d, want %d", scraper.parallel, DefaultParallel)
 	}
-	if s.attempts != DefaultAttempts {
-		t.Errorf("attempts is %d, want %d", s.attempts, DefaultAttempts)
+	if scraper.attempts != DefaultAttempts {
+		test.Errorf("attempts is %d, want %d", scraper.attempts, DefaultAttempts)
 	}
-	if s.backoff != DefaultBackoff {
-		t.Errorf("backoff is %s, want %s", s.backoff, DefaultBackoff)
+	if scraper.backoff != DefaultBackoff {
+		test.Errorf("backoff is %s, want %s", scraper.backoff, DefaultBackoff)
 	}
-	if s.client.Timeout != DefaultTimeout {
-		t.Errorf("timeout is %s, want %s", s.client.Timeout, DefaultTimeout)
+	if scraper.client.Timeout != DefaultTimeout {
+		test.Errorf("timeout is %s, want %s", scraper.client.Timeout, DefaultTimeout)
 	}
-	if s.minimum != 0 {
-		t.Errorf("minimum is %d, want it off by default", s.minimum)
+	if scraper.minimum != 0 {
+		test.Errorf("minimum is %d, want it off by default", scraper.minimum)
 	}
 }
 
-func TestScraperOptions(t *testing.T) {
+func TestScraperOptions(test *testing.T) {
 	client := &http.Client{Timeout: time.Minute}
-	s := NewScraper(
+	scraper := NewScraper(
 		WithBaseURL("https://example.com/listing/"),
 		WithHTTPClient(client),
 		WithParallel(2),
@@ -323,45 +323,45 @@ func TestScraperOptions(t *testing.T) {
 		WithMinimum(100),
 	)
 
-	if want := "https://example.com/listing"; s.baseURL != want {
-		t.Errorf("base URL is %q, want %q", s.baseURL, want)
+	if want := "https://example.com/listing"; scraper.baseURL != want {
+		test.Errorf("base URL is %q, want %q", scraper.baseURL, want)
 	}
-	if s.client != client {
-		t.Error("the HTTP client was not replaced")
+	if scraper.client != client {
+		test.Error("the HTTP client was not replaced")
 	}
-	if s.parallel != 2 || s.attempts != 5 || s.backoff != time.Second || s.minimum != 100 {
-		t.Errorf("options not applied: %+v", s)
+	if scraper.parallel != 2 || scraper.attempts != 5 || scraper.backoff != time.Second || scraper.minimum != 100 {
+		test.Errorf("options not applied: %+v", scraper)
 	}
 }
 
-func TestScrapeLogsEachLetter(t *testing.T) {
-	server := listing(t, map[string]string{"a": pageWith(row("AÇOUGUEIRO(A) INDEPENDENTE", "4722-9/01"))})
+func TestScrapeLogsEachLetter(test *testing.T) {
+	server := listing(test, map[string]string{"a": pageWith(row("AÇOUGUEIRO(A) INDEPENDENTE", "4722-9/01"))})
 	var log strings.Builder
 
-	_, err := NewScraper(WithBaseURL(server.URL), WithLogger(debugLogger(&log))).Scrape(t.Context())
+	_, err := NewScraper(WithBaseURL(server.URL), WithLogger(debugLogger(&log))).Scrape(test.Context())
 	if err != nil {
-		t.Fatalf("Scrape returned an error: %s", err)
+		test.Fatalf("Scrape returned an error: %s", err)
 	}
 
 	for _, want := range []string{"letter read", "letter with no page", "activities collected"} {
 		if !strings.Contains(log.String(), want) {
-			t.Errorf("the log does not mention %q:\n%s", want, log.String())
+			test.Errorf("the log does not mention %q:\n%s", want, log.String())
 		}
 	}
 }
 
 // debugLogger writes every log line, down to debug level, to w.
-func debugLogger(w io.Writer) *slog.Logger {
-	return slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{Level: slog.LevelDebug}))
+func debugLogger(writer io.Writer) *slog.Logger {
+	return slog.New(slog.NewTextHandler(writer, &slog.HandlerOptions{Level: slog.LevelDebug}))
 }
 
-func TestScrapeStopsWhileWaitingToRetry(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "oops", http.StatusServiceUnavailable)
+func TestScrapeStopsWhileWaitingToRetry(test *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		http.Error(writer, "oops", http.StatusServiceUnavailable)
 	}))
 	defer server.Close()
 
-	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	ctx, cancel := context.WithTimeout(test.Context(), 20*time.Millisecond)
 	defer cancel()
 
 	_, err := NewScraper(
@@ -371,6 +371,6 @@ func TestScrapeStopsWhileWaitingToRetry(t *testing.T) {
 	).Scrape(ctx)
 
 	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("got error %v, want %v", err, context.DeadlineExceeded)
+		test.Fatalf("got error %v, want %v", err, context.DeadlineExceeded)
 	}
 }

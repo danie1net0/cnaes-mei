@@ -42,7 +42,7 @@ Flags:
 `
 
 // options are the command-line options, after parsing.
-type options struct {
+type commandOptions struct {
 	format      output.Format
 	outputPath  string
 	databaseURI string
@@ -64,41 +64,43 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	if err := Run(ctx, args, stdout, stderr); err != nil {
-		// A usage error has already printed the usage text.
-		if !IsUsageError(err) {
-			fmt.Fprintln(stderr, "cnaes-mei:", err)
-		}
-		return 1
+	err := Run(ctx, args, stdout, stderr)
+	if err == nil {
+		return 0
 	}
-	return 0
+
+	// A usage error has already printed the usage text.
+	if !IsUsageError(err) {
+		fmt.Fprintln(stderr, "cnaes-mei:", err)
+	}
+	return 1
 }
 
 // Run executes the command and returns the error to report to the user.
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	opts, err := parse(args, stderr)
+	options, err := parse(args, stderr)
 	if err != nil {
 		return err
 	}
-	if opts.version {
+	if options.version {
 		fmt.Fprintln(stdout, Version)
 		return nil
 	}
 
 	level := slog.LevelInfo
-	if opts.verbose {
+	if options.verbose {
 		level = slog.LevelDebug
 	}
 	logger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: level}))
 
 	scraper := mei.NewScraper(
-		mei.WithBaseURL(opts.baseURL),
-		mei.WithHTTPClient(&http.Client{Timeout: opts.timeout}),
+		mei.WithBaseURL(options.baseURL),
+		mei.WithHTTPClient(&http.Client{Timeout: options.timeout}),
 		mei.WithLogger(logger),
-		mei.WithParallel(opts.parallel),
-		mei.WithAttempts(opts.attempts),
-		mei.WithMinimum(opts.minimum),
-		mei.WithStrict(opts.strict),
+		mei.WithParallel(options.parallel),
+		mei.WithAttempts(options.attempts),
+		mei.WithMinimum(options.minimum),
+		mei.WithStrict(options.strict),
 	)
 
 	activities, err := scraper.Scrape(ctx)
@@ -106,22 +108,15 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	if opts.writeOutput {
-		if err := write(opts, stdout, activities); err != nil {
-			return err
-		}
+	if err := write(options, stdout, activities); err != nil {
+		return err
 	}
-	if opts.databaseURI != "" {
-		if err := store(ctx, opts, logger, activities); err != nil {
-			return err
-		}
-	}
-	return nil
+	return store(ctx, options, logger, activities)
 }
 
 // parse reads the flags, applying the environment variables as defaults.
-func parse(args []string, stderr io.Writer) (options, error) {
-	var opts options
+func parse(args []string, stderr io.Writer) (commandOptions, error) {
+	var options commandOptions
 	var format string
 
 	flags := flag.NewFlagSet("cnaes-mei", flag.ContinueOnError)
@@ -132,43 +127,43 @@ func parse(args []string, stderr io.Writer) (options, error) {
 	}
 
 	flags.StringVar(&format, "format", string(output.CSV), "output format: "+output.Names())
-	flags.StringVar(&opts.outputPath, "output", stdoutPath, "file to write to, or - for standard output")
-	flags.StringVar(&opts.databaseURI, "database-url", os.Getenv("DATABASE_URL"), "PostgreSQL URI to store the activities in (default DATABASE_URL)")
-	flags.StringVar(&opts.table, "table", postgres.DefaultTable, "table to store the activities in")
-	flags.StringVar(&opts.baseURL, "base-url", baseURLDefault(), "address of the listing (default MEI_BASE_URL, else the gov.br listing)")
-	flags.IntVar(&opts.minimum, "min", defaultMinimum, "fail when fewer than this many activities are found; 0 disables the check")
-	flags.IntVar(&opts.parallel, "parallel", mei.DefaultParallel, "how many pages to fetch at the same time")
-	flags.IntVar(&opts.attempts, "attempts", mei.DefaultAttempts, "how many times to try a page that fails")
-	flags.DurationVar(&opts.timeout, "timeout", mei.DefaultTimeout, "timeout of each request")
-	flags.BoolVar(&opts.strict, "strict", false, "stop when a row cannot be read, instead of logging and skipping it")
-	flags.BoolVar(&opts.verbose, "verbose", false, "log each letter as it is read")
-	flags.BoolVar(&opts.version, "version", false, "print the version and exit")
+	flags.StringVar(&options.outputPath, "output", stdoutPath, "file to write to, or - for standard output")
+	flags.StringVar(&options.databaseURI, "database-url", os.Getenv("DATABASE_URL"), "PostgreSQL URI to store the activities in (default DATABASE_URL)")
+	flags.StringVar(&options.table, "table", postgres.DefaultTable, "table to store the activities in")
+	flags.StringVar(&options.baseURL, "base-url", baseURLDefault(), "address of the listing (default MEI_BASE_URL, else the gov.br listing)")
+	flags.IntVar(&options.minimum, "min", defaultMinimum, "fail when fewer than this many activities are found; 0 disables the check")
+	flags.IntVar(&options.parallel, "parallel", mei.DefaultParallel, "how many pages to fetch at the same time")
+	flags.IntVar(&options.attempts, "attempts", mei.DefaultAttempts, "how many times to try a page that fails")
+	flags.DurationVar(&options.timeout, "timeout", mei.DefaultTimeout, "timeout of each request")
+	flags.BoolVar(&options.strict, "strict", false, "stop when a row cannot be read, instead of logging and skipping it")
+	flags.BoolVar(&options.verbose, "verbose", false, "log each letter as it is read")
+	flags.BoolVar(&options.version, "version", false, "print the version and exit")
 
 	if err := flags.Parse(args); err != nil {
-		return options{}, err
+		return commandOptions{}, err
 	}
 	if flags.NArg() > 0 {
-		return options{}, fmt.Errorf("unexpected argument %q", flags.Arg(0))
+		return commandOptions{}, fmt.Errorf("unexpected argument %q", flags.Arg(0))
 	}
 
 	parsed, err := output.ParseFormat(format)
 	if err != nil {
-		return options{}, err
+		return commandOptions{}, err
 	}
-	opts.format = parsed
+	options.format = parsed
 
 	// Without a database the activities have nowhere else to go, so they are
 	// written out; with one, only an explicit -output asks for both.
-	opts.writeOutput = opts.databaseURI == "" || isSet(flags, "output")
-	return opts, nil
+	options.writeOutput = options.databaseURI == "" || isSet(flags, "output")
+	return options, nil
 }
 
 // isSet reports whether the user passed a flag, as opposed to it keeping its
 // default.
 func isSet(flags *flag.FlagSet, name string) bool {
 	var set bool
-	flags.Visit(func(f *flag.Flag) {
-		if f.Name == name {
+	flags.Visit(func(visited *flag.Flag) {
+		if visited.Name == name {
 			set = true
 		}
 	})
@@ -184,34 +179,44 @@ func baseURLDefault() string {
 	return mei.DefaultBaseURL
 }
 
-// write sends the activities to standard output or to a file. The error of
-// closing the file joins the error of writing it, so that a failure to flush
-// the last bytes is not lost.
-func write(opts options, stdout io.Writer, activities []mei.Activity) (err error) {
-	out := stdout
-	if opts.outputPath != stdoutPath {
-		file, ferr := os.Create(opts.outputPath)
-		if ferr != nil {
-			return fmt.Errorf("could not create %s: %w", opts.outputPath, ferr)
-		}
-		defer func() { err = errors.Join(err, file.Close()) }()
-		out = file
+// write sends the activities to standard output or to a file, and does nothing
+// when the activities are only meant for the database. The error of closing the
+// file joins the error of writing it, so that a failure to flush the last bytes
+// is not lost.
+func write(options commandOptions, stdout io.Writer, activities []mei.Activity) (err error) {
+	if !options.writeOutput {
+		return nil
 	}
-	return output.Write(out, opts.format, activities)
+	if options.outputPath == stdoutPath {
+		return output.Write(stdout, options.format, activities)
+	}
+
+	file, createError := os.Create(options.outputPath)
+	if createError != nil {
+		return fmt.Errorf("could not create %s: %w", options.outputPath, createError)
+	}
+	defer func() { err = errors.Join(err, file.Close()) }()
+
+	return output.Write(file, options.format, activities)
 }
 
-// store replaces the contents of the database table.
-func store(ctx context.Context, opts options, logger *slog.Logger, activities []mei.Activity) error {
-	db, err := postgres.Connect(ctx, opts.databaseURI)
+// store replaces the contents of the database table, and does nothing when no
+// database was given.
+func store(ctx context.Context, options commandOptions, logger *slog.Logger, activities []mei.Activity) error {
+	if options.databaseURI == "" {
+		return nil
+	}
+
+	database, err := postgres.Connect(ctx, options.databaseURI)
 	if err != nil {
 		return err
 	}
-	defer db.Close(ctx) //nolint:errcheck // closing a connection we are done with
+	defer database.Close(ctx) //nolint:errcheck // closing a connection we are done with
 
-	if err := db.Replace(ctx, opts.table, activities); err != nil {
+	if err := database.Replace(ctx, options.table, activities); err != nil {
 		return err
 	}
-	logger.Info("activities stored", "table", opts.table, "total", len(activities))
+	logger.Info("activities stored", "table", options.table, "total", len(activities))
 	return nil
 }
 

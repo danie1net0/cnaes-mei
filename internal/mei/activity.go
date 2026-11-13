@@ -26,8 +26,8 @@ type Activity struct {
 }
 
 // String formats the activity for logs and error messages.
-func (a Activity) String() string {
-	return fmt.Sprintf("%s %s", FormatCNAE(a.CNAE), a.Occupation)
+func (activity Activity) String() string {
+	return fmt.Sprintf("%s %s", FormatCNAE(activity.CNAE), activity.Occupation)
 }
 
 // ParseCNAE reads a CNAE code the way the government publishes it — "4724-5/00",
@@ -36,15 +36,15 @@ func (a Activity) String() string {
 func ParseCNAE(raw string) (int, error) {
 	var code int
 	var digits int
-	for _, r := range raw {
-		if r < '0' || r > '9' {
+	for _, character := range raw {
+		if character < '0' || character > '9' {
 			continue
 		}
 		digits++
 		if digits > cnaeDigits {
 			return 0, fmt.Errorf("CNAE %q has more than %d digits", raw, cnaeDigits)
 		}
-		code = code*10 + int(r-'0')
+		code = code*10 + int(character-'0')
 	}
 	if digits != cnaeDigits {
 		return 0, fmt.Errorf("CNAE %q has %d digits, expected %d", raw, digits, cnaeDigits)
@@ -61,6 +61,6 @@ func FormatCNAE(code int) string {
 // normalizeSpace collapses every run of whitespace — including the non-breaking
 // spaces the government's HTML is full of — into a single blank, and trims the
 // ends.
-func normalizeSpace(s string) string {
-	return strings.Join(strings.Fields(strings.ReplaceAll(s, " ", " ")), " ")
+func normalizeSpace(text string) string {
+	return strings.Join(strings.Fields(strings.ReplaceAll(text, " ", " ")), " ")
 }

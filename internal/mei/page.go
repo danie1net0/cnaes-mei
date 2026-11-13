@@ -32,8 +32,8 @@ const (
 // Rows with fewer than two cells are layout noise and are skipped silently.
 // A page with no table at all is a different matter — that is ErrNoTable, with
 // no activities, because it means the layout changed.
-func ParsePage(r io.Reader, letter string) ([]Activity, error) {
-	doc, err := html.Parse(r)
+func ParsePage(reader io.Reader, letter string) ([]Activity, error) {
+	document, err := html.Parse(reader)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse the HTML: %w", err)
 	}
@@ -44,15 +44,15 @@ func ParsePage(r io.Reader, letter string) ([]Activity, error) {
 
 	// The document is walked once, so a table nested in another table does not
 	// have its rows read twice.
-	forEachNode(doc, func(n *html.Node) {
-		if n.Type != html.ElementNode {
+	forEachNode(document, func(node *html.Node) {
+		if node.Type != html.ElementNode {
 			return
 		}
-		switch n.Data {
+		switch node.Data {
 		case "table":
 			tables++
 		case "tr":
-			activity, err := parseRow(n, letter)
+			activity, err := parseRow(node, letter)
 			if err != nil {
 				problems = append(problems, err)
 				return
@@ -106,9 +106,9 @@ func rowCells(row *html.Node) []string {
 }
 
 // textOf concatenates the text under a node, ignoring the markup in between.
-func textOf(n *html.Node) string {
+func textOf(node *html.Node) string {
 	var text strings.Builder
-	forEachNode(n, func(node *html.Node) {
+	forEachNode(node, func(node *html.Node) {
 		if node.Type == html.TextNode {
 			text.WriteString(node.Data)
 			text.WriteString(" ")
@@ -117,10 +117,11 @@ func textOf(n *html.Node) string {
 	return text.String()
 }
 
-// forEachNode calls fn for n and for every node below it, depth first.
-func forEachNode(n *html.Node, fn func(*html.Node)) {
-	fn(n)
-	for child := n.FirstChild; child != nil; child = child.NextSibling {
-		forEachNode(child, fn)
+// forEachNode calls visit for the node and for every node below it, depth
+// first.
+func forEachNode(node *html.Node, visit func(*html.Node)) {
+	visit(node)
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		forEachNode(child, visit)
 	}
 }

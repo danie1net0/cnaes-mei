@@ -28,9 +28,9 @@ var Formats = []Format{CSV, TSV, JSON}
 
 // ParseFormat reads a format by name.
 func ParseFormat(name string) (Format, error) {
-	for _, f := range Formats {
-		if strings.EqualFold(name, string(f)) {
-			return f, nil
+	for _, format := range Formats {
+		if strings.EqualFold(name, string(format)) {
+			return format, nil
 		}
 	}
 	return "", fmt.Errorf("unknown format %q, expected one of %s", name, Names())
@@ -39,8 +39,8 @@ func ParseFormat(name string) (Format, error) {
 // Names lists the format names, for help texts and error messages.
 func Names() string {
 	names := make([]string, len(Formats))
-	for i, f := range Formats {
-		names[i] = string(f)
+	for index, format := range Formats {
+		names[index] = string(format)
 	}
 	return strings.Join(names, ", ")
 }
@@ -49,27 +49,27 @@ func Names() string {
 //
 // The CNAE goes out as the seven digits the Receita Federal publishes, as text:
 // as a number it would lose the leading zero of codes such as 0111-3/01.
-func Write(w io.Writer, format Format, activities []mei.Activity) error {
+func Write(writer io.Writer, format Format, activities []mei.Activity) error {
 	switch format {
 	case CSV:
-		return writeSeparated(w, ',', activities)
+		return writeSeparated(writer, ',', activities)
 	case TSV:
-		return writeSeparated(w, '\t', activities)
+		return writeSeparated(writer, '\t', activities)
 	case JSON:
-		return writeJSON(w, activities)
+		return writeJSON(writer, activities)
 	}
 	return fmt.Errorf("unknown format %q, expected one of %s", format, Names())
 }
 
 // writeSeparated writes the records with a header row, which both a
 // spreadsheet and PostgreSQL's COPY ... WITH (FORMAT csv, HEADER) understand.
-func writeSeparated(w io.Writer, comma rune, activities []mei.Activity) error {
-	out := csv.NewWriter(w)
+func writeSeparated(writer io.Writer, comma rune, activities []mei.Activity) error {
+	out := csv.NewWriter(writer)
 	out.Comma = comma
 
 	records := [][]string{{"cnae", "ocupacao", "letra"}}
-	for _, a := range activities {
-		records = append(records, []string{mei.FormatCNAE(a.CNAE), a.Occupation, a.Letter})
+	for _, activity := range activities {
+		records = append(records, []string{mei.FormatCNAE(activity.CNAE), activity.Occupation, activity.Letter})
 	}
 	if err := out.WriteAll(records); err != nil {
 		return fmt.Errorf("could not write the records: %w", err)
@@ -84,17 +84,17 @@ type jsonActivity struct {
 	Letter     string `json:"letra"`
 }
 
-func writeJSON(w io.Writer, activities []mei.Activity) error {
+func writeJSON(writer io.Writer, activities []mei.Activity) error {
 	records := make([]jsonActivity, 0, len(activities))
-	for _, a := range activities {
+	for _, activity := range activities {
 		records = append(records, jsonActivity{
-			CNAE:       mei.FormatCNAE(a.CNAE),
-			Occupation: a.Occupation,
-			Letter:     a.Letter,
+			CNAE:       mei.FormatCNAE(activity.CNAE),
+			Occupation: activity.Occupation,
+			Letter:     activity.Letter,
 		})
 	}
 
-	encoder := json.NewEncoder(w)
+	encoder := json.NewEncoder(writer)
 	encoder.SetIndent("", "  ")
 	encoder.SetEscapeHTML(false)
 	if err := encoder.Encode(records); err != nil {

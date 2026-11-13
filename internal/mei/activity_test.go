@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-func TestParseCNAE(t *testing.T) {
-	for _, tc := range []struct {
+func TestParseCNAE(test *testing.T) {
+	for _, testCase := range []struct {
 		name string
 		raw  string
 		want int
@@ -17,20 +17,20 @@ func TestParseCNAE(t *testing.T) {
 		{"other punctuation", "4724-5-00", 4724500},
 		{"surrounded by spaces", " 4724-5/00 ", 4724500},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := ParseCNAE(tc.raw)
+		test.Run(testCase.name, func(test *testing.T) {
+			got, err := ParseCNAE(testCase.raw)
 			if err != nil {
-				t.Fatalf("ParseCNAE(%q) returned an error: %s", tc.raw, err)
+				test.Fatalf("ParseCNAE(%q) returned an error: %s", testCase.raw, err)
 			}
-			if got != tc.want {
-				t.Errorf("ParseCNAE(%q) got %d, want %d", tc.raw, got, tc.want)
+			if got != testCase.want {
+				test.Errorf("ParseCNAE(%q) got %d, want %d", testCase.raw, got, testCase.want)
 			}
 		})
 	}
 }
 
-func TestParseCNAEErrors(t *testing.T) {
-	for _, tc := range []struct {
+func TestParseCNAEErrors(test *testing.T) {
+	for _, testCase := range []struct {
 		name string
 		raw  string
 		want string
@@ -40,20 +40,20 @@ func TestParseCNAEErrors(t *testing.T) {
 		{"no digits", "CNAE", "has 0 digits"},
 		{"empty", "", "has 0 digits"},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := ParseCNAE(tc.raw)
+		test.Run(testCase.name, func(test *testing.T) {
+			got, err := ParseCNAE(testCase.raw)
 			if err == nil {
-				t.Fatalf("ParseCNAE(%q) got %d, want an error", tc.raw, got)
+				test.Fatalf("ParseCNAE(%q) got %d, want an error", testCase.raw, got)
 			}
-			if !strings.Contains(err.Error(), tc.want) {
-				t.Errorf("ParseCNAE(%q) error is %q, want it to mention %q", tc.raw, err, tc.want)
+			if !strings.Contains(err.Error(), testCase.want) {
+				test.Errorf("ParseCNAE(%q) error is %q, want it to mention %q", testCase.raw, err, testCase.want)
 			}
 		})
 	}
 }
 
-func TestFormatCNAE(t *testing.T) {
-	for _, tc := range []struct {
+func TestFormatCNAE(test *testing.T) {
+	for _, testCase := range []struct {
 		code int
 		want string
 	}{
@@ -61,34 +61,34 @@ func TestFormatCNAE(t *testing.T) {
 		{111301, "0111301"},
 		{0, "0000000"},
 	} {
-		if got := FormatCNAE(tc.code); got != tc.want {
-			t.Errorf("FormatCNAE(%d) got %q, want %q", tc.code, got, tc.want)
+		if got := FormatCNAE(testCase.code); got != testCase.want {
+			test.Errorf("FormatCNAE(%d) got %q, want %q", testCase.code, got, testCase.want)
 		}
 	}
 }
 
-func TestParseCNAEAndFormatCNAERoundTrip(t *testing.T) {
+func TestParseCNAEAndFormatCNAERoundTrip(test *testing.T) {
 	const raw = "0111-3/01"
 
 	code, err := ParseCNAE(raw)
 	if err != nil {
-		t.Fatalf("ParseCNAE(%q) returned an error: %s", raw, err)
+		test.Fatalf("ParseCNAE(%q) returned an error: %s", raw, err)
 	}
 	if got, want := FormatCNAE(code), "0111301"; got != want {
-		t.Errorf("FormatCNAE(ParseCNAE(%q)) got %q, want %q", raw, got, want)
+		test.Errorf("FormatCNAE(ParseCNAE(%q)) got %q, want %q", raw, got, want)
 	}
 }
 
-func TestActivityString(t *testing.T) {
+func TestActivityString(test *testing.T) {
 	activity := Activity{CNAE: 111301, Occupation: "CULTIVO DE ARROZ", Letter: "C"}
 
 	if got, want := activity.String(), "0111301 CULTIVO DE ARROZ"; got != want {
-		t.Errorf("String() got %q, want %q", got, want)
+		test.Errorf("String() got %q, want %q", got, want)
 	}
 }
 
-func TestNormalizeSpace(t *testing.T) {
-	for _, tc := range []struct {
+func TestNormalizeSpace(test *testing.T) {
+	for _, testCase := range []struct {
 		name string
 		in   string
 		want string
@@ -98,9 +98,9 @@ func TestNormalizeSpace(t *testing.T) {
 		{"non-breaking space", "ABATEDOR DE AVES", "ABATEDOR DE AVES"},
 		{"empty", " \n ", ""},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := normalizeSpace(tc.in); got != tc.want {
-				t.Errorf("normalizeSpace(%q) got %q, want %q", tc.in, got, tc.want)
+		test.Run(testCase.name, func(test *testing.T) {
+			if got := normalizeSpace(testCase.in); got != testCase.want {
+				test.Errorf("normalizeSpace(%q) got %q, want %q", testCase.in, got, testCase.want)
 			}
 		})
 	}
